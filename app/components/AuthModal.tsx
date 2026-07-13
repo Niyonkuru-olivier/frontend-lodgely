@@ -145,22 +145,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
                 </p>
               )}
             </div>
-            {resetLink && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
-                <p className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                  Development reset link
-                </p>
-                <a
-                  href={resetLink}
-                  className="mt-2 block break-all text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
-                >
-                  Open password reset page
-                </a>
-                <p className="mt-2 text-[11px] text-amber-700/80 dark:text-amber-500">
-                  Shown only in local development. Production hides this link.
-                </p>
-              </div>
-            )}
+           
             <p className="text-xs text-center text-zinc-400">
               Didn&apos;t receive it?{" "}
               <button

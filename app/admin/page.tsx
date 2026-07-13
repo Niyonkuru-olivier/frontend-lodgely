@@ -35,6 +35,22 @@ interface Stats {
   totalAccommodations: number;
   availableAccommodations: number;
   unavailableAccommodations: number;
+  totalBookings?: number;
+  pendingBookings?: number;
+}
+
+interface Booking {
+  id: number;
+  chambers: number;
+  guests: number;
+  checkIn: string;
+  checkOut: string;
+  totalPrice: number;
+  status: string;
+  notes?: string | null;
+  createdAt: string;
+  user: { id: number; name: string; email: string };
+  accommodation: Accommodation;
 }
 
 const ACCOMMODATION_TYPES = [
@@ -56,18 +72,21 @@ export default function AdminDashboard() {
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
   // Navigation
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "accommodations">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "accommodations" | "bookings">("overview");
 
   // Data
   const [stats, setStats] = useState<Stats | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [accommodations, setAccommodations] = useState<Accommodation[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookingStatusFilter, setBookingStatusFilter] = useState("");
+  const [bookingHotelFilter, setBookingHotelFilter] = useState("");
   const [loading, setLoading] = useState(true);
 
   // Modals
   const [userModal, setUserModal] = useState<{ open: boolean; mode: "add" | "edit"; user?: User }>({ open: false, mode: "add" });
   const [accModal, setAccModal] = useState<{ open: boolean; mode: "add" | "edit"; item?: Accommodation }>({ open: false, mode: "add" });
-  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; type: "user" | "accommodation"; id: number; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; type: "user" | "accommodation" | "booking"; id: number; name: string } | null>(null);
 
   // Toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -104,6 +123,16 @@ export default function AdminDashboard() {
     } catch { /* ignore */ }
   }, [API_URL, authHeaders]);
 
+  const fetchBookings = useCallback(async () => {
+    try {
+      const query = new URLSearchParams();
+      if (bookingStatusFilter) query.append("status", bookingStatusFilter);
+      if (bookingHotelFilter) query.append("accommodationId", bookingHotelFilter);
+      const res = await fetch(`${API_URL}/bookings?${query.toString()}`, { headers: authHeaders() });
+      if (res.ok) setBookings(await res.json());
+    } catch { /* ignore */ }
+  }, [API_URL, authHeaders, bookingStatusFilter, bookingHotelFilter]);
+
   useEffect(() => {
     if (authLoading) return;
     if (!user || user.role !== "admin") {
@@ -112,11 +141,47 @@ export default function AdminDashboard() {
     }
     const load = async () => {
       setLoading(true);
-      await Promise.all([fetchStats(), fetchUsers(), fetchAccommodations()]);
+      await Promise.all([fetchStats(), fetchUsers(), fetchAccommodations(), fetchBookings()]);
       setLoading(false);
     };
     load();
-  }, [authLoading, user, router, fetchStats, fetchUsers, fetchAccommodations]);
+  }, [authLoading, user, router, fetchStats, fetchUsers, fetchAccommodations, fetchBookings]);
+
+  const handleUpdateBookingStatus = async (id: number, status: string) => {
+    try {
+      const res = await fetch(`${API_URL}/bookings/${id}/status`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) {
+        showToast(`Booking marked as ${status}`, "success");
+        fetchBookings();
+        fetchStats();
+      } else {
+        const err = await res.json();
+        showToast(err.message || "Failed to update booking", "error");
+      }
+    } catch {
+      showToast("Network error", "error");
+    }
+  };
+
+  const handleDeleteBooking = async (id: number) => {
+    try {
+      const res = await fetch(`${API_URL}/bookings/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (res.ok) {
+        showToast("Booking deleted", "success");
+        fetchBookings();
+        fetchStats();
+      } else {
+        showToast("Failed to delete booking", "error");
+      }
+    } catch {
+      showToast("Network error", "error");
+    }
+    setDeleteConfirm(null);
+  };
 
   /* ─── User CRUD ─── */
   const handleSaveUser = async (data: { name: string; email: string; password?: string; role: string }, editId?: number) => {
@@ -237,6 +302,15 @@ export default function AdminDashboard() {
         </svg>
       ),
     },
+    {
+      id: "bookings" as const,
+      label: "Booking Management",
+      icon: (
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+        </svg>
+      ),
+    },
   ];
 
   return (
@@ -300,7 +374,15 @@ export default function AdminDashboard() {
       <main className="flex-1 ml-64">
         {/* Top bar */}
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-white/5 bg-zinc-950/90 backdrop-blur-md px-8">
-          <h1 className="text-lg font-bold capitalize">{activeTab === "overview" ? "Dashboard Overview" : activeTab === "users" ? "User Management" : "Accommodation Management"}</h1>
+          <h1 className="text-lg font-bold capitalize">
+            {activeTab === "overview"
+              ? "Dashboard Overview"
+              : activeTab === "users"
+                ? "User Management"
+                : activeTab === "accommodations"
+                  ? "Accommodation Management"
+                  : "Booking Management"}
+          </h1>
           <div className="text-xs text-zinc-500">
             {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </div>
@@ -318,12 +400,14 @@ export default function AdminDashboard() {
                 <StatCard label="Total Accommodations" value={stats.totalAccommodations} icon="building" gradient="from-emerald-500 to-green-600" />
                 <StatCard label="Available" value={stats.availableAccommodations} icon="check" gradient="from-green-500 to-emerald-500" />
                 <StatCard label="Unavailable" value={stats.unavailableAccommodations} icon="x" gradient="from-rose-500 to-pink-500" />
+                <StatCard label="Total Bookings" value={stats.totalBookings ?? bookings.length} icon="building" gradient="from-violet-500 to-purple-600" />
+                <StatCard label="Pending Bookings" value={stats.pendingBookings ?? bookings.filter((b) => b.status === "pending").length} icon="check" gradient="from-amber-500 to-yellow-500" />
               </div>
 
               {/* Quick Actions */}
               <div>
                 <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-zinc-500">Quick Actions</h3>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                   <button onClick={() => { setActiveTab("users"); setUserModal({ open: true, mode: "add" }); }} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[.02] p-4 text-left hover:bg-white/5 transition-colors group">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600/10 text-indigo-400 group-hover:bg-indigo-600/20 transition-colors">
                       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
@@ -360,7 +444,107 @@ export default function AdminDashboard() {
                       <p className="text-xs text-zinc-500">View all accommodations</p>
                     </div>
                   </button>
+                  <button onClick={() => setActiveTab("bookings")} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[.02] p-4 text-left hover:bg-white/5 transition-colors group">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600/10 text-violet-400 group-hover:bg-violet-600/20 transition-colors">
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">Manage Bookings</p>
+                      <p className="text-xs text-zinc-500">View booking history</p>
+                    </div>
+                  </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─── Bookings Tab ─── */}
+          {activeTab === "bookings" && (
+            <div className="space-y-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-zinc-400">{bookings.length} bookings</p>
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value={bookingStatusFilter}
+                    onChange={(e) => setBookingStatusFilter(e.target.value)}
+                    className="rounded-xl border border-white/10 bg-zinc-800 px-3 py-2 text-sm text-white"
+                  >
+                    <option value="">All statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                  <select
+                    value={bookingHotelFilter}
+                    onChange={(e) => setBookingHotelFilter(e.target.value)}
+                    className="rounded-xl border border-white/10 bg-zinc-800 px-3 py-2 text-sm text-white max-w-xs"
+                  >
+                    <option value="">All hotels / stays</option>
+                    {accommodations.map((a) => (
+                      <option key={a.id} value={a.id}>{a.title}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-white/5">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/5 bg-white/[.02]">
+                      <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-zinc-500">Guest</th>
+                      <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-zinc-500">Stay</th>
+                      <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-zinc-500">Dates</th>
+                      <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-zinc-500">Rooms</th>
+                      <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-zinc-500">Total</th>
+                      <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-zinc-500">Status</th>
+                      <th className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-zinc-500">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {bookings.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-8 text-center text-sm text-zinc-500">No bookings found</td>
+                      </tr>
+                    ) : (
+                      bookings.map((b) => (
+                        <tr key={b.id} className="hover:bg-white/[.02]">
+                          <td className="px-4 py-4">
+                            <p className="text-sm font-semibold">{b.user?.name}</p>
+                            <p className="text-xs text-zinc-500">{b.user?.email}</p>
+                          </td>
+                          <td className="px-4 py-4 text-sm text-zinc-300 max-w-[180px] truncate">{b.accommodation?.title}</td>
+                          <td className="px-4 py-4 text-xs text-zinc-400">
+                            {new Date(b.checkIn).toLocaleDateString()} → {new Date(b.checkOut).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-4 text-sm text-zinc-400">{b.chambers} / {b.guests} guests</td>
+                          <td className="px-4 py-4 text-sm font-semibold">${b.totalPrice.toFixed(2)}</td>
+                          <td className="px-4 py-4">
+                            <select
+                              value={b.status}
+                              onChange={(e) => handleUpdateBookingStatus(b.id, e.target.value)}
+                              className="rounded-lg border border-white/10 bg-zinc-800 px-2 py-1 text-xs text-white"
+                            >
+                              <option value="pending">pending</option>
+                              <option value="confirmed">confirmed</option>
+                              <option value="cancelled">cancelled</option>
+                              <option value="completed">completed</option>
+                            </select>
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            <button
+                              onClick={() => setDeleteConfirm({ open: true, type: "booking", id: b.id, name: `${b.accommodation?.title} (${b.user?.name})` })}
+                              className="rounded-lg p-2 text-zinc-500 hover:bg-rose-500/10 hover:text-rose-400"
+                              title="Delete"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -549,7 +733,13 @@ export default function AdminDashboard() {
                 Cancel
               </button>
               <button
-                onClick={() => deleteConfirm.type === "user" ? handleDeleteUser(deleteConfirm.id) : handleDeleteAccommodation(deleteConfirm.id)}
+                onClick={() =>
+                  deleteConfirm.type === "user"
+                    ? handleDeleteUser(deleteConfirm.id)
+                    : deleteConfirm.type === "booking"
+                      ? handleDeleteBooking(deleteConfirm.id)
+                      : handleDeleteAccommodation(deleteConfirm.id)
+                }
                 className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white hover:bg-rose-500 transition-colors"
               >
                 Delete

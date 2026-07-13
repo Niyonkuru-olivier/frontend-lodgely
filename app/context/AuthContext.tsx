@@ -15,6 +15,13 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  requestPasswordReset: (email: string) => Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    resetLink?: string;
+    emailSent?: boolean;
+  }>;
   logout: () => void;
 }
 
@@ -26,6 +33,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(true);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+  const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
   useEffect(() => {
     // Check local storage for token
@@ -46,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: normalizeEmail(email), password }),
       });
 
       const data = await response.json();
@@ -72,7 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email: normalizeEmail(email), password }),
       });
 
       const data = await response.json();
@@ -88,6 +97,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const requestPasswordReset = async (email: string) => {
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!normalizedEmail) {
+      return { success: false, error: "Email is required." };
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return { success: false, error: "Please enter a valid email address." };
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/auth/forgot-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: normalizedEmail }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.message || "Unable to process your request. Please try again.",
+        };
+      }
+
+      return {
+        success: true,
+        message:
+          data.message ||
+          "If an account with that email exists, a password reset link has been sent.",
+        resetLink: data.resetLink,
+        emailSent: data.emailSent,
+      };
+    } catch {
+      return {
+        success: false,
+        error: "Network error. Please check your connection and try again.",
+      };
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem("lodgely_token");
     localStorage.removeItem("lodgely_user");
@@ -96,7 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, requestPasswordReset, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -12,19 +12,23 @@ interface AuthModalProps {
 type ModalMode = "login" | "register" | "forgot-password" | "forgot-success";
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode }) => {
-  const { login, register } = useAuth();
+  const { login, register, requestPasswordReset } = useAuth();
   const [mode, setMode] = useState<ModalMode>(initialMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [resetLink, setResetLink] = useState("");
+  const [emailSent, setEmailSent] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
   useEffect(() => {
     setMode(initialMode);
     setError("");
+    setSuccessMessage("");
+    setResetLink("");
+    setEmailSent(null);
     setName("");
     setEmail("");
     setPassword("");
@@ -38,21 +42,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
     setLoading(true);
 
     if (mode === "forgot-password") {
-      try {
-        const res = await fetch(`${API_URL}/auth/forgot-password`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        });
-        setLoading(false);
-        if (res.ok) {
-          setMode("forgot-success");
-        } else {
-          setError("Something went wrong. Please try again.");
-        }
-      } catch {
-        setLoading(false);
-        setError("Network error. Is the backend running?");
+      const result = await requestPasswordReset(email);
+      setLoading(false);
+
+      if (result.success) {
+        setSuccessMessage(
+          result.message ||
+            "If an account with that email exists, a password reset link has been sent.",
+        );
+        setResetLink(result.resetLink || "");
+        setEmailSent(typeof result.emailSent === "boolean" ? result.emailSent : null);
+        setMode("forgot-success");
+      } else {
+        setError(result.error || "Something went wrong. Please try again.");
       }
       return;
     }
@@ -84,7 +86,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
     login: "Sign in to access your Lodgely bookings",
     register: "Join Lodgely to search and book accommodations",
     "forgot-password": "Enter your email and we'll send you a reset link",
-    "forgot-success": "A password reset link has been sent to your email",
+    "forgot-success": "If an account exists, a reset link was sent",
   };
 
   return (
@@ -128,14 +130,44 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
           <div className="mt-6 space-y-4">
             <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-4 dark:bg-emerald-950/20 dark:border-emerald-900">
               <p className="text-sm text-emerald-700 dark:text-emerald-400">
-                ✅ We&apos;ve sent a password reset link to <strong>{email}</strong>.
-                Check your inbox (and spam folder). The link expires in 1 hour.
+                {successMessage}
               </p>
+              <p className="mt-3 text-xs text-emerald-600 dark:text-emerald-500">
+                Check the inbox for <strong>{email.trim().toLowerCase()}</strong> and your spam/junk folder.
+                The link expires in 1 hour.
+              </p>
+              {emailSent === false && (
+                <p className="mt-2 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                  The server could not deliver the email via SMTP. Use the reset link below (dev) or fix SMTP settings.
+                </p>
+              )}
             </div>
+            {resetLink && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+                <p className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                  Development reset link
+                </p>
+                <a
+                  href={resetLink}
+                  className="mt-2 block break-all text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                >
+                  Open password reset page
+                </a>
+                <p className="mt-2 text-[11px] text-amber-700/80 dark:text-amber-500">
+                  Shown only in local development. Production hides this link.
+                </p>
+              </div>
+            )}
             <p className="text-xs text-center text-zinc-400">
               Didn&apos;t receive it?{" "}
               <button
-                onClick={() => { setMode("forgot-password"); setError(""); }}
+                onClick={() => {
+                  setMode("forgot-password");
+                  setError("");
+                  setSuccessMessage("");
+                  setResetLink("");
+                  setEmailSent(null);
+                }}
                 className="text-indigo-600 hover:underline dark:text-indigo-400 font-semibold"
               >
                 Resend
@@ -193,7 +225,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
                   {mode === "login" && (
                     <button
                       type="button"
-                      onClick={() => { setMode("forgot-password"); setError(""); }}
+                      onClick={() => { setMode("forgot-password"); setError(""); setSuccessMessage(""); }}
                       className="text-xs text-indigo-600 hover:underline dark:text-indigo-400 font-medium"
                     >
                       Forgot password?

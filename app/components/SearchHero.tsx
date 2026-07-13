@@ -27,7 +27,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({ onSearch }) => {
           Find Your Perfect Stay
         </h1>
         <p className="mx-auto mt-4 max-w-xl text-lg text-zinc-300">
-          Discover handpicked luxury suites, beach resorts, and mountain cabins across Rwanda.
+          Discover handpicked luxury suites, beach resorts, and mountain cabins across Africa.
         </p>
 
         {/* Search Bar Container */}

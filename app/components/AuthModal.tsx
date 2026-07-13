@@ -138,7 +138,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMo
               </p>
               {emailSent === false && (
                 <p className="mt-2 text-xs font-semibold text-amber-600 dark:text-amber-400">
-                  The server could not deliver the email via SMTP. Use the reset link below (dev) or fix SMTP settings.
+                  Email delivery failed on the API server. For local testing, set
+                  NEXT_PUBLIC_API_URL=http://localhost:5000 in frontend/.env.local
+                  and restart the frontend. For production, add SMTP_USER and SMTP_PASS
+                  (Gmail App Password) on Render.
                 </p>
               )}
             </div>

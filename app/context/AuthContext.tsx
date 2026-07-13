@@ -22,7 +22,14 @@ interface AuthContextType {
     resetLink?: string;
     emailSent?: boolean;
   }>;
+  updateProfile: (data: {
+    name?: string;
+    email?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  apiUrl: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,12 +39,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
   useEffect(() => {
-    // Check local storage for token
     const storedToken = localStorage.getItem("lodgely_token");
     const storedUser = localStorage.getItem("lodgely_user");
 
@@ -50,11 +55,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await fetch(`${API_URL}/auth/login`, {
+      const response = await fetch(`${apiUrl}/auth/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: normalizeEmail(email), password }),
       });
 
@@ -69,18 +72,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(data.access_token);
       setUser(data.user);
       return { success: true };
-    } catch (err: any) {
+    } catch {
       return { success: false, error: "Network error. Please check if backend is running." };
     }
   };
 
   const register = async (name: string, email: string, password: string) => {
     try {
-      const response = await fetch(`${API_URL}/auth/register`, {
+      const response = await fetch(`${apiUrl}/auth/register`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email: normalizeEmail(email), password }),
       });
 
@@ -90,9 +91,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: data.message || "Registration failed" };
       }
 
-      // Automatically login on registration success
       return login(email, password);
-    } catch (err: any) {
+    } catch {
       return { success: false, error: "Network error. Please check if backend is running." };
     }
   };
@@ -109,11 +109,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const response = await fetch(`${API_URL}/auth/forgot-password`, {
+      const response = await fetch(`${apiUrl}/auth/forgot-password`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: normalizedEmail }),
       });
 
@@ -142,6 +140,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateProfile = async (data: {
+    name?: string;
+    email?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }) => {
+    if (!token) {
+      return { success: false, error: "You must be logged in." };
+    }
+
+    try {
+      const response = await fetch(`${apiUrl}/auth/profile`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        return { success: false, error: result.message || "Failed to update profile" };
+      }
+
+      localStorage.setItem("lodgely_user", JSON.stringify(result));
+      setUser(result);
+      return { success: true };
+    } catch {
+      return { success: false, error: "Network error. Please try again." };
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem("lodgely_token");
     localStorage.removeItem("lodgely_user");
@@ -150,7 +182,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, requestPasswordReset, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        loading,
+        login,
+        register,
+        requestPasswordReset,
+        updateProfile,
+        logout,
+        apiUrl,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
